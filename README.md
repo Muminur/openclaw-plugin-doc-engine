@@ -273,7 +273,7 @@ All configuration lives under `plugins.entries.doc-engine.config` in `~/.opencla
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `repositories` | `RepoConfig[]` | `[]` | Array of documentation repositories to index |
-| `storage` | `string` | `<plugin-dir>/storage` | Directory for persisted index data (vectors, hashes, chunks, TF-IDF model) |
+| `storage` | `string` | `<plugin-dir>/storage` | Directory for persisted index data (vectors, hashes, chunks, TF-IDF model). **Must match the actual data directory** — if set, overrides the default. |
 | `chunkMaxTokens` | `number` | `800` | Maximum token count per chunk |
 | `topK` | `number` | `5` | Default number of search results returned |
 | `watchEnabled` | `boolean` | `true` | Enable automatic re-indexing when files change |
@@ -337,7 +337,10 @@ Returns ranked results with source file, section path, relevance score, and text
 ### CLI
 
 ```bash
-# Search across all repos
+# Search across all repos (shorthand)
+openclaw docsearch "heartbeat configuration"
+
+# Search with explicit subcommand and options
 openclaw docsearch search "heartbeat configuration" -k 10
 
 # Search within a specific repo
@@ -382,7 +385,7 @@ npm test           # Run all tests (vitest)
 npm run test:watch # Run in watch mode
 ```
 
-Test coverage spans 136 tests across 15 test files:
+Test coverage spans 138 tests across 15 test files:
 
 | Test File | Covers |
 |-----------|--------|
@@ -430,7 +433,7 @@ plugin-doc-engine/
 │   │   └── SecretScanner.ts       # Secret detection/redaction
 │   └── watchers/
 │       └── RepoWatcher.ts         # File system watchers
-├── tests/                          # 15 test files, 136 tests
+├── tests/                          # 15 test files, 138 tests
 ├── storage/                        # Persisted index data (runtime)
 ├── openclaw.plugin.json            # Plugin manifest
 ├── package.json

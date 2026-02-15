@@ -40,10 +40,9 @@ export default {
     api.registerService({
       id: "doc-indexer",
       start: async () => {
-        engine = createEngine(
-          api.pluginConfig || {},
-          api.resolvePath("./storage")
-        );
+        const config = api.pluginConfig || {};
+        const storagePath = config.storage || api.resolvePath("./storage");
+        engine = createEngine(config, storagePath);
         await engine.start();
         api.logger.info("Doc engine indexed and ready");
       },
@@ -104,25 +103,40 @@ export default {
           .command("docsearch")
           .description("Semantic documentation engine commands");
 
+        const searchAction = async (query: string, opts: any) => {
+          if (!engine) {
+            console.error("Engine not started");
+            return;
+          }
+          const results = await engine.search(query, {
+            topK: parseInt(opts.topK || "5"),
+            repoFilter: opts.repo,
+          });
+          if (results.length === 0) {
+            console.log("No results found.");
+            return;
+          }
+          for (const r of results) {
+            console.log(
+              `[${r.score.toFixed(3)}] ${r.repo}:${r.file} — ${r.sectionPath}`
+            );
+            console.log(`  ${r.text.slice(0, 120)}...\n`);
+          }
+        };
+
         docs
           .command("search <query>")
           .option("-k, --top-k <n>", "Number of results", "5")
           .option("-r, --repo <name>", "Filter by repo")
-          .action(async (query: string, opts: any) => {
-            if (!engine) {
-              console.error("Engine not started");
-              return;
-            }
-            const results = await engine.search(query, {
-              topK: parseInt(opts.topK),
-              repoFilter: opts.repo,
-            });
-            for (const r of results) {
-              console.log(
-                `[${r.score.toFixed(3)}] ${r.repo}:${r.file} — ${r.sectionPath}`
-              );
-              console.log(`  ${r.text.slice(0, 120)}...\n`);
-            }
+          .action(searchAction);
+
+        // Allow `openclaw docsearch <query>` as shorthand for `openclaw docsearch search <query>`
+        docs
+          .argument("[query]")
+          .option("-k, --top-k <n>", "Number of results", "5")
+          .option("-r, --repo <name>", "Filter by repo")
+          .action(async (query: string | undefined, opts: any) => {
+            if (query) await searchAction(query, opts);
           });
 
         docs

@@ -107,4 +107,75 @@ describe("Plugin Registration", () => {
     const result = await command.handler({ args: "test query" });
     expect(result.text).toContain("not ready");
   });
+
+  it("service uses pluginConfig.storage over resolvePath fallback", async () => {
+    const pluginModule = await import("../../src/index.js");
+    const plugin = pluginModule.default;
+
+    const customStorage = "/tmp/custom-doc-engine-storage";
+    let capturedService: any;
+    const mockApi = {
+      pluginConfig: {
+        repositories: [],
+        storage: customStorage,
+      },
+      resolvePath: (p: string) => `/tmp/fallback-storage${p.startsWith(".") ? p.slice(1) : "/" + p}`,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      registerService(svc: any) { capturedService = svc; },
+      registerTool: vi.fn(),
+      registerCli: vi.fn(),
+      registerCommand: vi.fn(),
+    };
+
+    plugin.register(mockApi);
+
+    // The service start should use the config storage path, not the resolvePath fallback
+    // We verify by starting the service and checking that it creates files at the config path
+    expect(capturedService).toBeDefined();
+    expect(capturedService.id).toBe("doc-indexer");
+
+    // Start the engine — it should use customStorage
+    await capturedService.start();
+
+    // Verify storage was created at the config path (not the fallback)
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(customStorage)).toBe(true);
+
+    await capturedService.stop();
+
+    // Cleanup
+    const { rm } = await import("node:fs/promises");
+    await rm(customStorage, { recursive: true, force: true });
+  });
+
+  it("service falls back to resolvePath when no storage in config", async () => {
+    const pluginModule = await import("../../src/index.js");
+    const plugin = pluginModule.default;
+
+    const fallbackPath = "/tmp/fallback-doc-storage/storage";
+    let capturedService: any;
+    const mockApi = {
+      pluginConfig: {
+        repositories: [],
+        // no storage field
+      },
+      resolvePath: (_p: string) => fallbackPath,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      registerService(svc: any) { capturedService = svc; },
+      registerTool: vi.fn(),
+      registerCli: vi.fn(),
+      registerCommand: vi.fn(),
+    };
+
+    plugin.register(mockApi);
+    await capturedService.start();
+
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(fallbackPath)).toBe(true);
+
+    await capturedService.stop();
+
+    const { rm } = await import("node:fs/promises");
+    await rm(fallbackPath, { recursive: true, force: true });
+  });
 });
