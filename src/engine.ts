@@ -51,6 +51,7 @@ export function createEngine(
   const hashesPath = join(storage, "hashes.json");
   const tfidfPath = join(storage, "tfidf.json");
   const vectorsPath = join(storage, "vectors.json");
+  const chunksPath = join(storage, "chunks.json");
 
   let currentStats: IndexStats = {
     totalChunks: 0,
@@ -75,12 +76,22 @@ export function createEngine(
     } catch {
       // No saved state yet
     }
+    try {
+      const raw = await fsReadFile(chunksPath, "utf-8");
+      const chunks: DocChunk[] = JSON.parse(raw);
+      for (const chunk of chunks) {
+        chunkIndex.set(chunk.chunkId, chunk);
+      }
+    } catch {
+      // No saved state yet
+    }
   }
 
   async function saveState(): Promise<void> {
     await ensureStorage();
     await writeFile(tfidfPath, JSON.stringify(tfidf.serialize()), "utf-8");
     await vectorStore.save(vectorsPath);
+    await writeFile(chunksPath, JSON.stringify([...chunkIndex.values()]), "utf-8");
   }
 
   async function runIndex(full = false): Promise<IndexStats> {
