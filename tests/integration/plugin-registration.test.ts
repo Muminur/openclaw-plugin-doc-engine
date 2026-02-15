@@ -185,6 +185,63 @@ describe("Plugin Registration", () => {
     expect(tool.label.length).toBeGreaterThan(0);
   });
 
+  it("tool schema is fully compliant with Google OpenAPI 3.0 requirements", async () => {
+    const pluginModule = await import("../../src/index.js");
+    const plugin = pluginModule.default;
+
+    let toolFn: any;
+    const mockApi = {
+      pluginConfig: {},
+      resolvePath: (p: string) => `/tmp/test${p}`,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      registerService: vi.fn(),
+      registerTool(fn: any, _opts: any) { toolFn = fn; },
+      registerCli: vi.fn(),
+      registerCommand: vi.fn(),
+    };
+
+    plugin.register(mockApi);
+    const tool = toolFn();
+    const params = tool.parameters;
+
+    // Schema must be a proper object (not undefined, null, or boolean)
+    expect(typeof params).toBe("object");
+    expect(params).not.toBeNull();
+
+    // Must have explicit type: "object" at top level
+    expect(params.type).toBe("object");
+
+    // Must have additionalProperties: false for Google API strict mode
+    expect(params.additionalProperties).toBe(false);
+
+    // Every property must be a valid schema object (not undefined/null)
+    for (const [key, value] of Object.entries(params.properties)) {
+      expect(typeof value).toBe("object");
+      expect(value).not.toBeNull();
+      // Each property must have an explicit type
+      expect((value as any).type).toBeDefined();
+      // type must be a string (not array) for OpenAPI 3.0 compat
+      expect(typeof (value as any).type).toBe("string");
+    }
+
+    // required must be an array of strings
+    expect(Array.isArray(params.required)).toBe(true);
+    for (const r of params.required) {
+      expect(typeof r).toBe("string");
+      // Every required field must exist in properties
+      expect(params.properties[r]).toBeDefined();
+    }
+
+    // Verify no unsupported JSON Schema keywords for OpenAPI 3.0
+    const unsupportedKeywords = ["oneOf", "anyOf", "allOf", "$ref", "not", "if", "then", "else"];
+    for (const keyword of unsupportedKeywords) {
+      expect(params[keyword]).toBeUndefined();
+      for (const prop of Object.values(params.properties)) {
+        expect((prop as any)[keyword]).toBeUndefined();
+      }
+    }
+  });
+
   it("tool execute returns AgentToolResult format (content array)", async () => {
     const pluginModule = await import("../../src/index.js");
     const plugin = pluginModule.default;

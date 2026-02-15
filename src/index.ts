@@ -59,22 +59,23 @@ export default {
         description:
           "Search OpenClaw documentation, deep-dive knowledge, and skills semantically. Returns ranked chunks with source attribution and relevance scores.",
         parameters: {
-          type: "object",
+          type: "object" as const,
+          additionalProperties: false,
           properties: {
             query: {
-              type: "string",
+              type: "string" as const,
               description: "Natural language search query",
             },
             topK: {
-              type: "number",
+              type: "number" as const,
               description: "Number of results (default 5)",
             },
             repoFilter: {
-              type: "string",
+              type: "string" as const,
               description: "Filter by repo name",
             },
           },
-          required: ["query"],
+          required: ["query"] as const,
         },
         async execute(
           _toolCallId: string,
