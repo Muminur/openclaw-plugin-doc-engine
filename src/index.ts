@@ -25,6 +25,7 @@ const configSchema = {
     watchEnabled: { type: "boolean", default: true },
     watchDebounceMs: { type: "number", default: 2000 },
     secretPatterns: { type: "array", items: { type: "string" } },
+    englishOnly: { type: "boolean", default: true },
   },
 };
 
@@ -103,12 +104,24 @@ export default {
           .command("docsearch")
           .description("Semantic documentation engine commands");
 
-        const searchAction = async (query: string, opts: any) => {
-          if (!engine) {
-            console.error("Engine not started");
-            return;
+        const ensureEngine = async () => {
+          if (engine) return true;
+          // CLI runs standalone — start engine on demand
+          try {
+            const config = api.pluginConfig || {};
+            const storagePath = config.storage || api.resolvePath("./storage");
+            engine = createEngine(config, storagePath);
+            await engine.start();
+            return true;
+          } catch (err: any) {
+            console.error("Failed to start engine:", err.message);
+            return false;
           }
-          const results = await engine.search(query, {
+        };
+
+        const searchAction = async (query: string, opts: any) => {
+          if (!(await ensureEngine())) return;
+          const results = await engine!.search(query, {
             topK: parseInt(opts.topK || "5"),
             repoFilter: opts.repo,
           });
@@ -143,20 +156,14 @@ export default {
           .command("index")
           .option("--full", "Force full re-index")
           .action(async (opts: any) => {
-            if (!engine) {
-              console.error("Engine not started");
-              return;
-            }
-            const stats = await engine.index(opts.full);
+            if (!(await ensureEngine())) return;
+            const stats = await engine!.index(opts.full);
             console.log("Indexing complete:", JSON.stringify(stats, null, 2));
           });
 
         docs.command("status").action(async () => {
-          if (!engine) {
-            console.error("Engine not started");
-            return;
-          }
-          console.log(JSON.stringify(engine.getStats(), null, 2));
+          if (!(await ensureEngine())) return;
+          console.log(JSON.stringify(engine!.getStats(), null, 2));
         });
       },
       { commands: ["docsearch"] }
