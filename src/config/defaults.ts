@@ -13,6 +13,7 @@ export const defaultConfig: DocEngineConfig = {
     "ghp_[a-zA-Z0-9]{36}",
     "xoxb-[a-zA-Z0-9-]+",
   ],
+  englishOnly: true,
 };
 
 export function mergeConfig(

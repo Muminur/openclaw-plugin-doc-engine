@@ -29,7 +29,8 @@
       "secretPatterns": {
         "type": "array",
         "items": { "type": "string" }
-      }
+      },
+      "englishOnly": { "type": "boolean", "default": true }
     }
   },
   "uiHints": {

@@ -73,6 +73,7 @@ export interface DocEngineConfig {
   watchEnabled: boolean;
   watchDebounceMs: number;
   secretPatterns: string[];
+  englishOnly: boolean;
 }
 
 /** Embedding provider interface (pluggable) */

@@ -22,6 +22,7 @@ import {
 } from "./indexing/FileHasher.js";
 import { resolveConflicts } from "./retrieval/ConflictResolver.js";
 import { cosineSimilarity } from "./embeddings/Similarity.js";
+import { createLanguageFilter } from "./indexing/LanguageFilter.js";
 
 export interface DocEngine {
   start(): Promise<void>;
@@ -43,6 +44,7 @@ export function createEngine(
   const scanner = createScanner(
     config.secretPatterns.length > 0 ? config.secretPatterns : undefined
   );
+  const langFilter = createLanguageFilter({ englishOnly: config.englishOnly });
   const tfidf = createTfIdfEngine();
   const vectorStore = createVectorStore();
   const chunkIndex = new Map<string, DocChunk>();
@@ -145,6 +147,7 @@ export function createEngine(
     for (const f of allFiles) {
       if (!filesToProcess.includes(f.file)) continue;
       if (scanner.shouldSkipFile(f.file)) continue;
+      if (langFilter.shouldSkipFile(f.file)) continue;
       const content = await fsReadFile(f.absolutePath, "utf-8");
       const cleaned = scanner.clean(content);
       fileContents.set(f.file, cleaned);
@@ -197,6 +200,7 @@ export function createEngine(
 
         const repoConfig = registry.getRepo(f.repo);
         for (const chunk of chunks) {
+          if (langFilter.shouldSkipChunk(chunk.text)) continue;
           const vector = tfidf.embed(chunk.text);
           vectorStore.upsert(chunk.chunkId, {
             vector,

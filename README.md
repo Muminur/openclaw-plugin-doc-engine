@@ -279,6 +279,7 @@ All configuration lives under `plugins.entries.doc-engine.config` in `~/.opencla
 | `watchEnabled` | `boolean` | `true` | Enable automatic re-indexing when files change |
 | `watchDebounceMs` | `number` | `2000` | Debounce delay (ms) before re-indexing after a change |
 | `secretPatterns` | `string[]` | `[]` | Additional regex patterns for secret redaction |
+| `englishOnly` | `boolean` | `true` | When enabled, filters out non-English content (CJK, Arabic, Cyrillic, etc.) at both file and chunk level. Files in known i18n directories (zh-CN/, ja/, ko/, etc.) are skipped entirely. |
 
 ### Repository Configuration
 
@@ -385,7 +386,7 @@ npm test           # Run all tests (vitest)
 npm run test:watch # Run in watch mode
 ```
 
-Test coverage spans 138 tests across 15 test files:
+Test coverage spans 174 tests across 16 test files:
 
 | Test File | Covers |
 |-----------|--------|
@@ -404,6 +405,7 @@ Test coverage spans 138 tests across 15 test files:
 | `Similarity.test.ts` | Cosine similarity computation |
 | `TfIdfEngine.test.ts` | TF-IDF fit, embed, serialize/deserialize |
 | `VectorStore.test.ts` | Vector storage, topK retrieval, persistence |
+| `LanguageFilter.test.ts` | Non-English text detection and filtering |
 
 ### Project Structure
 
@@ -433,7 +435,7 @@ plugin-doc-engine/
 │   │   └── SecretScanner.ts       # Secret detection/redaction
 │   └── watchers/
 │       └── RepoWatcher.ts         # File system watchers
-├── tests/                          # 15 test files, 138 tests
+├── tests/                          # 16 test files, 174 tests
 ├── storage/                        # Persisted index data (runtime)
 ├── openclaw.plugin.json            # Plugin manifest
 ├── package.json
