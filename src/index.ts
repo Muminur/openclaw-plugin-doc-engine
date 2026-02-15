@@ -55,9 +55,10 @@ export default {
     api.registerTool(
       () => ({
         name: "semantic_doc_search",
+        label: "Semantic Doc Search",
         description:
           "Search OpenClaw documentation, deep-dive knowledge, and skills semantically. Returns ranked chunks with source attribution and relevance scores.",
-        inputSchema: {
+        parameters: {
           type: "object",
           properties: {
             query: {
@@ -75,24 +76,26 @@ export default {
           },
           required: ["query"],
         },
-        handler: async ({
-          query,
-          topK,
-          repoFilter,
-        }: {
-          query: string;
-          topK?: number;
-          repoFilter?: string;
-        }) => {
+        async execute(
+          _toolCallId: string,
+          params: Record<string, unknown>,
+        ) {
+          const query = params.query as string;
+          const topK = params.topK as number | undefined;
+          const repoFilter = params.repoFilter as string | undefined;
           if (!engine)
             return {
-              result: "Doc engine not initialized yet. Try again shortly.",
+              content: [{ type: "text" as const, text: "Doc engine not initialized yet. Try again shortly." }],
+              details: {},
             };
           const results = await engine.search(query, {
             topK: topK ?? 5,
             repoFilter,
           });
-          return { result: JSON.stringify(results, null, 2) };
+          return {
+            content: [{ type: "text" as const, text: JSON.stringify(results, null, 2) }],
+            details: { resultCount: results.length },
+          };
         },
       }),
       { names: ["semantic_doc_search"] }

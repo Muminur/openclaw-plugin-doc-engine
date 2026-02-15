@@ -52,8 +52,9 @@ describe("Plugin Registration", () => {
     expect(registrations.tools).toHaveLength(1);
     const toolDef = registrations.tools[0].toolFn();
     expect(toolDef.name).toBe("semantic_doc_search");
-    expect(toolDef.inputSchema.required).toContain("query");
-    expect(typeof toolDef.handler).toBe("function");
+    expect(toolDef.parameters.required).toContain("query");
+    expect(typeof toolDef.execute).toBe("function");
+    expect(toolDef.label).toBe("Semantic Doc Search");
     expect(registrations.tools[0].opts.names).toContain("semantic_doc_search");
 
     // Verify CLI registration
@@ -84,8 +85,8 @@ describe("Plugin Registration", () => {
 
     plugin.register(mockApi);
     const tool = toolFn();
-    const result = await tool.handler({ query: "test" });
-    expect(result.result).toContain("not initialized");
+    const result = await tool.execute("test-call-0", { query: "test" });
+    expect(result.content[0].text).toContain("not initialized");
   });
 
   it("command handler returns not-ready message when engine not started", async () => {
@@ -146,6 +147,69 @@ describe("Plugin Registration", () => {
     // Cleanup
     const { rm } = await import("node:fs/promises");
     await rm(customStorage, { recursive: true, force: true });
+  });
+
+  it("tool uses AgentTool-compatible format (parameters, execute, label)", async () => {
+    const pluginModule = await import("../../src/index.js");
+    const plugin = pluginModule.default;
+
+    let toolFn: any;
+    const mockApi = {
+      pluginConfig: {},
+      resolvePath: (p: string) => `/tmp/test${p}`,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      registerService: vi.fn(),
+      registerTool(fn: any, _opts: any) { toolFn = fn; },
+      registerCli: vi.fn(),
+      registerCommand: vi.fn(),
+    };
+
+    plugin.register(mockApi);
+    const tool = toolFn();
+
+    // Must use 'parameters' (not 'inputSchema') for pi-ai AgentTool compatibility
+    expect(tool.parameters).toBeDefined();
+    expect(tool.parameters.type).toBe("object");
+    expect(tool.parameters.properties.query).toBeDefined();
+    expect(tool.parameters.required).toContain("query");
+
+    // Must NOT have 'inputSchema' (gateway ignores it)
+    expect(tool.inputSchema).toBeUndefined();
+
+    // Must use 'execute' (not 'handler') for AgentTool compatibility
+    expect(typeof tool.execute).toBe("function");
+    expect(tool.handler).toBeUndefined();
+
+    // Must have 'label' for AgentTool compatibility
+    expect(typeof tool.label).toBe("string");
+    expect(tool.label.length).toBeGreaterThan(0);
+  });
+
+  it("tool execute returns AgentToolResult format (content array)", async () => {
+    const pluginModule = await import("../../src/index.js");
+    const plugin = pluginModule.default;
+
+    let toolFn: any;
+    const mockApi = {
+      pluginConfig: {},
+      resolvePath: (p: string) => `/tmp/test${p}`,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      registerService: vi.fn(),
+      registerTool(fn: any, _opts: any) { toolFn = fn; },
+      registerCli: vi.fn(),
+      registerCommand: vi.fn(),
+    };
+
+    plugin.register(mockApi);
+    const tool = toolFn();
+
+    // execute takes (toolCallId, params, signal?) and returns {content, details}
+    const result = await tool.execute("test-call-1", { query: "test" });
+    expect(result.content).toBeDefined();
+    expect(Array.isArray(result.content)).toBe(true);
+    expect(result.content.length).toBeGreaterThan(0);
+    expect(result.content[0].type).toBe("text");
+    expect(typeof result.content[0].text).toBe("string");
   });
 
   it("service falls back to resolvePath when no storage in config", async () => {
