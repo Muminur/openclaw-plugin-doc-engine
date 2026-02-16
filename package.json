@@ -1,5 +1,5 @@
 {
-  "name": "@openclaw/plugin-doc-engine",
+  "name": "@openclaw/doc-engine",
   "version": "1.0.0",
   "description": "Multi-repo semantic documentation engine for OpenClaw",
   "type": "module",
