@@ -66,7 +66,8 @@ export function createEngine(
     await mkdir(storage, { recursive: true });
   }
 
-  async function loadState(): Promise<void> {
+  /** Returns true if a full re-index is needed (e.g. orphaned state detected). */
+  async function loadState(): Promise<boolean> {
     try {
       const raw = await fsReadFile(tfidfPath, "utf-8");
       tfidf.deserialize(JSON.parse(raw));
@@ -87,6 +88,36 @@ export function createEngine(
     } catch {
       // No saved state yet
     }
+
+    // Validate state consistency after loading persisted files
+    const storedDim = vectorStore.getAnyVectorDim();
+
+    // Case 1: Orphaned vectors — chunks.json was lost but vectors.json survived.
+    // Clear stale vectors and signal full re-index to rebuild from scratch.
+    if (chunkIndex.size === 0 && vectorStore.size > 0) {
+      vectorStore.clear();
+      return true;
+    }
+
+    // Case 2: Dimension mismatch — crash between saving tfidf.json and vectors.json.
+    // Re-embed all known chunks with the current vocabulary dimensions.
+    if (storedDim !== null && storedDim !== tfidf.dimensions && chunkIndex.size > 0) {
+      vectorStore.clear();
+      for (const [chunkId, chunk] of chunkIndex) {
+        const repoConfig = registry.getRepo(chunk.repo);
+        const newVector = tfidf.embed(chunk.text);
+        vectorStore.upsert(chunkId, {
+          vector: newVector,
+          repo: chunk.repo,
+          file: chunk.file,
+          sectionPath: chunk.sectionPath,
+          priority: repoConfig?.priority ?? 999,
+          hash: chunk.hash,
+        });
+      }
+    }
+
+    return false;
   }
 
   async function saveState(): Promise<void> {
@@ -94,6 +125,13 @@ export function createEngine(
     await writeFile(tfidfPath, JSON.stringify(tfidf.serialize()), "utf-8");
     await vectorStore.save(vectorsPath);
     await writeFile(chunksPath, JSON.stringify([...chunkIndex.values()]), "utf-8");
+    // Write version marker last — diagnostic metadata for external tooling
+    const stateVersionPath = join(storage, "state-version.json");
+    await writeFile(stateVersionPath, JSON.stringify({
+      dimensions: tfidf.dimensions,
+      vectorCount: vectorStore.size,
+      savedAt: new Date().toISOString(),
+    }), "utf-8");
   }
 
   async function runIndex(full = false): Promise<IndexStats> {
@@ -260,8 +298,8 @@ export function createEngine(
   return {
     async start(): Promise<void> {
       await ensureStorage();
-      await loadState();
-      await runIndex(false);
+      const needsFullReindex = await loadState();
+      await runIndex(needsFullReindex);
       await saveState();
     },
 

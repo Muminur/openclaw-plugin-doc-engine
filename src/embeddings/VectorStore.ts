@@ -15,6 +15,7 @@ export interface VectorStore {
   save(filePath: string): Promise<void>;
   size: number;
   clear(): void;
+  getAnyVectorDim(): number | null;
 }
 
 export function createVectorStore(): VectorStore {
@@ -67,6 +68,13 @@ export function createVectorStore(): VectorStore {
 
     clear(): void {
       vectors.clear();
+    },
+
+    getAnyVectorDim(): number | null {
+      for (const [, data] of vectors) {
+        return data.vector.length;
+      }
+      return null;
     },
   };
 }
