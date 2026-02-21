@@ -99,6 +99,13 @@ export function createEngine(
       return true;
     }
 
+    // Case 1b: Both chunks and vectors empty but vocabulary exists — state was
+    // cleared (e.g. storage corruption). Hashes still match so incremental index
+    // would skip all files. Force full re-index to rebuild.
+    if (chunkIndex.size === 0 && vectorStore.size === 0 && tfidf.dimensions > 0) {
+      return true;
+    }
+
     // Case 2: Dimension mismatch — crash between saving tfidf.json and vectors.json.
     // Re-embed all known chunks with the current vocabulary dimensions.
     if (storedDim !== null && storedDim !== tfidf.dimensions && chunkIndex.size > 0) {

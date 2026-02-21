@@ -723,3 +723,62 @@ describe("orphaned vector cleanup", () => {
     await engine.stop();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 5: Empty Chunks/Vectors with Stale Hashes Recovery
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("empty chunks and vectors with stale hashes recovery", () => {
+  let tmpDir: string;
+  let repoDir: string;
+  let storageDir: string;
+
+  // Need 2+ files so IDF is non-zero (log(N/df) with N>1 and df<N)
+  const DOC_A = "# Guide\n\nA helpful guide to getting started.\n\n## Setup\n\nFollow these steps.\n";
+  const DOC_B = "# Reference\n\nAPI reference documentation.\n\n## Endpoints\n\nList of available endpoints.\n";
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "doc-engine-stale-hashes-"));
+    repoDir = join(tmpDir, "docs");
+    storageDir = join(tmpDir, "storage");
+    await mkdir(repoDir, { recursive: true });
+    await mkdir(storageDir, { recursive: true });
+
+    await writeFile(join(repoDir, "guide.md"), DOC_A);
+    await writeFile(join(repoDir, "reference.md"), DOC_B);
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("triggers full re-index when chunks and vectors are empty but tfidf vocabulary exists", async () => {
+    const config = {
+      repositories: [
+        { name: "test-docs", path: repoDir, priority: 1, type: "core" as const },
+      ],
+      watchEnabled: false,
+    };
+
+    // Step 1: Normal run — build state
+    const engine1 = createEngine(config, storageDir);
+    await engine1.start();
+    await engine1.stop();
+
+    // Step 2: Wipe chunks.json and vectors.json but keep tfidf.json and hashes.json
+    // This simulates a partial corruption where data files are lost but metadata survives
+    await writeFile(join(storageDir, "chunks.json"), "[]", "utf-8");
+    await writeFile(join(storageDir, "vectors.json"), "{}", "utf-8");
+
+    // Step 3: Restart — loadState loads empty chunks/vectors but valid tfidf vocabulary
+    // BUG: runIndex(false) sees hashes match → processes 0 files → 0 chunks forever
+    // EXPECTED: detects state loss (vocab exists but no chunks), forces full re-index
+    const engine2 = createEngine(config, storageDir);
+    await engine2.start();
+
+    const results = await engine2.search("guide setup");
+    expect(results.length).toBeGreaterThan(0);
+
+    await engine2.stop();
+  });
+});
