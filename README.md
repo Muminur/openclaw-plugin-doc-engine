@@ -12,7 +12,7 @@
 ### Quick Install (Recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Muminur/openclaw-plugin-doc-engine/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Muminur/openclaw-plugin-doc-engine/master/scripts/install.sh | bash
 ```
 
 ### Manual Installation
@@ -180,7 +180,12 @@ In-memory vector store with persistence.
 - **`remove(id)`** — Delete a vector.
 - **`topK(queryVector, k, filter?)`** — Retrieve the top K most similar vectors via cosine similarity, with optional metadata filtering (e.g., by repo name).
 - **`clear()`** — Wipe all stored vectors (used during full re-index).
-- **`load(path)` / `save(path)`** — Persist vectors to and from a JSON file on disk.
+- **`save(path)`** — Persist vectors to disk in compressed sparse JSON format (`{ format: "sparse", dimensions, vectors }`). TF-IDF vectors are highly sparse (~0.13% non-zero for an 11k-term vocabulary), so this reduces `vectors.json` size by over 99% compared to storing dense arrays.
+- **`load(path)`** — Load vectors from disk. Auto-detects sparse format (new) and legacy dense format (old), so existing storage files continue to work without migration.
+
+Also exports two standalone helpers:
+- **`toSparse(dense)`** — Convert a dense `number[]` to `{ indices, values }` sparse representation.
+- **`fromSparse(sparse, dimensions)`** — Reconstruct a dense `number[]` from sparse representation.
 
 #### `src/embeddings/Similarity.ts` — Cosine Similarity
 
@@ -211,6 +216,13 @@ Handles incremental indexing by tracking file content hashes.
 #### `src/indexing/IndexBuilder.ts` — Index Construction Helpers
 
 Utility functions for building and managing the index data structures.
+
+#### `src/indexing/LanguageFilter.ts` — Language Detection and Filtering
+
+Detects and filters non-English content at both the file path and chunk text levels before content enters the index. Controlled by the `englishOnly` config option (default: `true`).
+
+- **`shouldSkipPath(filePath)`** — Returns `true` for files under known i18n directories (`zh-CN/`, `ja/`, `ko/`, `ru/`, `de/`, `fr/`, etc.) or with locale-prefixed names. Entire files are skipped before reading.
+- **`isEnglish(text)`** — Heuristic check on chunk text. Detects CJK characters, Arabic script, Cyrillic, and other non-Latin scripts. Chunks that fail this check are dropped before TF-IDF embedding.
 
 ---
 
@@ -386,26 +398,28 @@ npm test           # Run all tests (vitest)
 npm run test:watch # Run in watch mode
 ```
 
-Test coverage spans 174 tests across 16 test files:
+Test coverage spans 210 tests across 18 test files:
 
-| Test File | Covers |
-|-----------|--------|
-| `config.test.ts` | Default merging, schema validation |
-| `ConflictResolver.test.ts` | Priority-based deduplication |
-| `engine.test.ts` | Full engine lifecycle, search, indexing |
-| `FileHasher.test.ts` | SHA256 hashing, diff computation |
-| `full-pipeline.test.ts` | End-to-end integration tests |
-| `IndexBuilder.test.ts` | Index construction helpers |
-| `MarkdownChunker.test.ts` | Heading-aware chunking, token limits |
-| `plugin-registration.test.ts` | Plugin API registration |
-| `RepoRegistry.test.ts` | Repository scanning, glob matching |
-| `RepoWatcher.test.ts` | File system change detection |
-| `RetrievalEngine.test.ts` | Search orchestration |
-| `SecretScanner.test.ts` | Secret detection and redaction |
-| `Similarity.test.ts` | Cosine similarity computation |
-| `TfIdfEngine.test.ts` | TF-IDF fit, embed, serialize/deserialize |
-| `VectorStore.test.ts` | Vector storage, topK retrieval, persistence |
-| `LanguageFilter.test.ts` | Non-English text detection and filtering |
+| Test File | Tests | Covers |
+|-----------|-------|--------|
+| `config.test.ts` | 6 | Default merging, schema validation |
+| `ConflictResolver.test.ts` | 8 | Priority-based deduplication |
+| `crash-recovery.test.ts` | 10 | Crash recovery, stale hash healing, empty-chunk auto-repair |
+| `engine.test.ts` | 6 | Full engine lifecycle, search, indexing |
+| `FileHasher.test.ts` | 10 | SHA256 hashing, diff computation |
+| `full-pipeline.test.ts` | 7 | End-to-end integration tests |
+| `IndexBuilder.test.ts` | 13 | Index construction helpers |
+| `LanguageFilter.test.ts` | 36 | Non-English text detection and filtering |
+| `MarkdownChunker.test.ts` | 11 | Heading-aware chunking, token limits |
+| `plugin-registration.test.ts` | 8 | Plugin API registration |
+| `RepoRegistry.test.ts` | 10 | Repository scanning, glob matching |
+| `RepoWatcher.test.ts` | 5 | File system change detection |
+| `RetrievalEngine.test.ts` | 9 | Search orchestration |
+| `SecretScanner.test.ts` | 18 | Secret detection and redaction |
+| `Similarity.test.ts` | 7 | Cosine similarity computation |
+| `TfIdfEngine.test.ts` | 11 | TF-IDF fit, embed, serialize/deserialize |
+| `vector-mismatch.test.ts` | 9 | Vector dimension mismatch detection and auto-heal |
+| `VectorStore.test.ts` | 26 | Vector storage, topK retrieval, sparse format, persistence |
 
 ### Project Structure
 
@@ -425,7 +439,8 @@ plugin-doc-engine/
 │   ├── indexing/
 │   │   ├── MarkdownChunker.ts     # Markdown-aware chunking
 │   │   ├── FileHasher.ts          # SHA256 incremental hashing
-│   │   └── IndexBuilder.ts        # Index construction helpers
+│   │   ├── IndexBuilder.ts        # Index construction helpers
+│   │   └── LanguageFilter.ts      # Non-English content detection/filtering
 │   ├── registry/
 │   │   └── RepoRegistry.ts        # Repository scanning
 │   ├── retrieval/
@@ -435,7 +450,7 @@ plugin-doc-engine/
 │   │   └── SecretScanner.ts       # Secret detection/redaction
 │   └── watchers/
 │       └── RepoWatcher.ts         # File system watchers
-├── tests/                          # 16 test files, 174 tests
+├── tests/                          # 18 test files, 210 tests
 ├── storage/                        # Persisted index data (runtime)
 ├── openclaw.plugin.json            # Plugin manifest
 ├── package.json
