@@ -3,6 +3,52 @@ import { dirname } from "node:path";
 import { cosineSimilarity } from "./Similarity.js";
 import type { StoredVector } from "../types.js";
 
+// ── Sparse vector types and conversion functions ────────────
+
+export interface SparseVector {
+  indices: number[];
+  values: number[];
+}
+
+export function toSparse(dense: number[]): SparseVector {
+  const indices: number[] = [];
+  const values: number[] = [];
+  for (let i = 0; i < dense.length; i++) {
+    if (dense[i] !== 0) {
+      indices.push(i);
+      values.push(dense[i]);
+    }
+  }
+  return { indices, values };
+}
+
+export function fromSparse(sparse: SparseVector, dimensions: number): number[] {
+  const dense = new Array(dimensions).fill(0);
+  for (let i = 0; i < sparse.indices.length; i++) {
+    dense[sparse.indices[i]] = sparse.values[i];
+  }
+  return dense;
+}
+
+// ── Persisted format types ──────────────────────────────────
+
+interface SparseStoredEntry {
+  vector: SparseVector;
+  repo: string;
+  file: string;
+  sectionPath: string;
+  priority: number;
+  hash: string;
+}
+
+interface SparseFileFormat {
+  format: "sparse";
+  dimensions: number;
+  vectors: Record<string, SparseStoredEntry>;
+}
+
+// ── VectorStore ─────────────────────────────────────────────
+
 export interface VectorStore {
   upsert(chunkId: string, data: StoredVector): void;
   remove(chunkId: string): void;
@@ -49,16 +95,60 @@ export function createVectorStore(): VectorStore {
 
     async save(filePath: string): Promise<void> {
       await mkdir(dirname(filePath), { recursive: true });
-      const entries = Object.fromEntries(vectors);
-      await writeFile(filePath, JSON.stringify(entries), "utf-8");
+
+      // Determine dimensions from any stored vector
+      let dimensions = 0;
+      for (const [, data] of vectors) {
+        dimensions = data.vector.length;
+        break;
+      }
+
+      // Build sparse file format
+      const sparseEntries: Record<string, SparseStoredEntry> = {};
+      for (const [id, data] of vectors) {
+        sparseEntries[id] = {
+          vector: toSparse(data.vector),
+          repo: data.repo,
+          file: data.file,
+          sectionPath: data.sectionPath,
+          priority: data.priority,
+          hash: data.hash,
+        };
+      }
+
+      const output: SparseFileFormat = {
+        format: "sparse",
+        dimensions,
+        vectors: sparseEntries,
+      };
+
+      await writeFile(filePath, JSON.stringify(output), "utf-8");
     },
 
     async load(filePath: string): Promise<void> {
       const raw = await readFile(filePath, "utf-8");
-      const entries = JSON.parse(raw) as Record<string, StoredVector>;
+      const parsed = JSON.parse(raw);
       vectors.clear();
-      for (const [id, data] of Object.entries(entries)) {
-        vectors.set(id, data);
+
+      // Detect format: new sparse format has { format: "sparse", dimensions, vectors }
+      if (parsed.format === "sparse") {
+        const sparse = parsed as SparseFileFormat;
+        for (const [id, entry] of Object.entries(sparse.vectors)) {
+          vectors.set(id, {
+            vector: fromSparse(entry.vector, sparse.dimensions),
+            repo: entry.repo,
+            file: entry.file,
+            sectionPath: entry.sectionPath,
+            priority: entry.priority,
+            hash: entry.hash,
+          });
+        }
+      } else {
+        // Legacy dense format: Record<string, StoredVector>
+        const entries = parsed as Record<string, StoredVector>;
+        for (const [id, data] of Object.entries(entries)) {
+          vectors.set(id, data);
+        }
       }
     },
 
